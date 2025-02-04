@@ -1,0 +1,5 @@
+Session End: Tue Feb  4 22:00:04 2025
+Playtime: 0 minutes
+Final Gold: 0
+Final Health: 100/100
+------------------

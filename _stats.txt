@@ -1,0 +1,25 @@
+Session End: Sun Feb  2 21:14:59 2025
+Playtime: 0 minutes
+Final Gold: 0
+Final Health: 100/100
+------------------
+Session End: Sun Feb  2 22:53:32 2025
+Playtime: 0 minutes
+Final Gold: 0
+Final Health: 100/100
+------------------
+Session End: Sun Feb  2 22:53:45 2025
+Playtime: 0 minutes
+Final Gold: 0
+Final Health: 150/150
+------------------
+Session End: Mon Feb  3 21:15:40 2025
+Playtime: 0 minutes
+Final Gold: 0
+Final Health: 100/100
+------------------
+Session End: Mon Feb  3 23:30:17 2025
+Playtime: 0 minutes
+Final Gold: 0
+Final Health: 100/100
+------------------

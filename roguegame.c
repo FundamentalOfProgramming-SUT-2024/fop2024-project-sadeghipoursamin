@@ -1,10 +1,7 @@
 #include "game.h"
+#include "rock.c"
+#include "audio.h"
 
-// glitch on the screen, makes screen stop and lose 
-// monster attack system
-// player pick up ability
-// music for room entrance
-// traps and enemy system in themed rooms
 
 int current_floor = 0;
 Floor floors[4];
@@ -1771,7 +1768,6 @@ void check_secret_doors(Floor *floor, Player *player) {
 }
 
 void place_traps(Floor *floor, Room *room) {  
-        // More traps for treasure room
         int num_traps = (room->theme == TREASURE_ROOM) ? 
                        random_generator(2, 4) : 
                        random_generator(0, 1);
@@ -1969,7 +1965,6 @@ void collect_food(Player *player, Floor *floor, int x, int y) {
     
     bool can_collect = false;
     
-    // Check for nightmare room illusions
     if (floor->floor_index >= 1 && floor->floor_index <= 2) {
         for (int r = 2; r <= 4; r++) {
             if (floor->rooms[r].theme == NIGHTMARE_ROOM &&
@@ -2141,6 +2136,9 @@ void display_food_menu(Player *player) {
     werase(food_menu_win);
     wrefresh(food_menu_win);
     delwin(food_menu_win);
+    clear();
+    render_map(&floors[current_floor]);
+    mvaddch(player->y, player->x, '@');
     refresh();
 }
 
@@ -2268,6 +2266,9 @@ void display_spell_menu(Player *player) {
     werase(spell_menu_win);
     wrefresh(spell_menu_win);
     delwin(spell_menu_win);
+    clear();
+    render_map(&floors[current_floor]);
+    mvaddch(player->y, player->x, '@');
     refresh();
 }
 
@@ -2432,12 +2433,10 @@ void display_weapon_menu(Player *player) {
     WINDOW *weapon_menu_win = newwin(height, width, start_y, start_x);
     box(weapon_menu_win, 0, 0);
     
-    // Title
     wattron(weapon_menu_win, COLOR_PAIR(6));
     mvwprintw(weapon_menu_win, 1, (width - 16) / 2, "Weapon Inventory");
     wattroff(weapon_menu_win, COLOR_PAIR(6));
 
-    // Close Range Section
     wattron(weapon_menu_win, COLOR_PAIR(1));
     mvwprintw(weapon_menu_win, 3, 2, "=== Close Range Weapons ===");
     wattroff(weapon_menu_win, COLOR_PAIR(1));
@@ -2450,7 +2449,6 @@ void display_weapon_menu(Player *player) {
         player->weapons.sword_count > 0 ? "Owned" : "None",
         player->weapons.equipped_weapon == SWORD ? "[EQUIPPED]" : "");
 
-    // Long Range Section
     wattron(weapon_menu_win, COLOR_PAIR(1));
     mvwprintw(weapon_menu_win, 7, 2, "=== Long Range Weapons ===");
     wattroff(weapon_menu_win, COLOR_PAIR(1));
@@ -2467,7 +2465,6 @@ void display_weapon_menu(Player *player) {
         player->weapons.arrow_count,
         player->weapons.equipped_weapon == NORMAL_ARROW ? "[EQUIPPED]" : "");
 
-    // Stats Section
     wattron(weapon_menu_win, COLOR_PAIR(2));
     mvwprintw(weapon_menu_win, 12, 2, "Weapon Stats:");
     switch(player->weapons.equipped_weapon) {
@@ -2556,63 +2553,101 @@ void display_weapon_menu(Player *player) {
 
 void check_password_door(Floor *floor, Player *player, int new_x, int new_y) {
     if (floor->map[new_y][new_x] == 'P') {
-        for (int i = 0; i < 6; i++) {
-            PasswordDoor *door = &floor->password_doors[i];
-            if (door->x == new_x && door->y == new_y && door->is_locked) {
+        int door_room = -1;
+        for (int r = 0; r < 6; r++) {
+            if (new_x >= floor->rooms[r].x && new_x < floor->rooms[r].x + floor->rooms[r].width &&
+                new_y >= floor->rooms[r].y && new_y < floor->rooms[r].y + floor->rooms[r].height) {
+                door_room = r;
+                break;
+            }
+        }
+        
+        if (door_room == -1) return;
+        
+        PasswordDoor *door = &floor->password_doors[door_room];
+        if (door->x == new_x && door->y == new_y && door->is_locked) {
+            time_t current_time = time(NULL);
+            if (door->attempts_left == 0 && current_time - door->password_time < 30) {
+                int remaining_time = 30 - (current_time - door->password_time);
+                char msg[100];
+                snprintf(msg, sizeof(msg), "Door is locked for %d more seconds!", remaining_time);
+                show_message_for_2_seconds(msg);
+                return;
+            } else if (door->attempts_left == 0) {
+                door->attempts_left = 3;
+            }
 
-                char input[5];
-                int height = 3, width = 50;
-                WINDOW *pass_win = newwin(height, width, 1, 1);
-                box(pass_win, 0, 0);
-                echo();
-
-                switch(door->attempts_left) {
-                    case 3: // First attempt
-                        wattron(pass_win, COLOR_PAIR(6)); // Yellow
-                        mvwprintw(pass_win, 1, 2, "Enter password: ");
-                        wattroff(pass_win, COLOR_PAIR(6));
-                        break;
-                    case 2: // Second attempt
-                        wattron(pass_win, COLOR_PAIR(8)); // Orange/Yellow
-                        mvwprintw(pass_win, 1, 2, "Last chance! Enter password: ");
-                        wattroff(pass_win, COLOR_PAIR(8));
-                        break;
-                    case 1: // Final attempt
-                        wattron(pass_win, COLOR_PAIR(1)); // Red
-                        mvwprintw(pass_win, 1, 2, "FINAL ATTEMPT! Enter password: ");
-                        wattroff(pass_win, COLOR_PAIR(1));
-                        break;
-                }
+            if (player->ancient_keys > 0) {
+                WINDOW *key_prompt = newwin(3, 50, 1, 1);
+                box(key_prompt, 0, 0);
+                mvwprintw(key_prompt, 1, 2, "Use ancient key? (y/n)");
+                wrefresh(key_prompt);
                 
-                wrefresh(pass_win);
-                wgetnstr(pass_win, input, 4);
-                noecho();
-
-                if (strcmp(input, door->password) == 0 || 
-                    (current_floor >= 2 && check_reverse_password(input, door->password))) {
-                    door->is_locked = 0;
-                    floor->map[door->y][door->x] = '@';
-                    attron(COLOR_PAIR(7));  // Green color
-                    mvaddch(door->y, door->x, '@');
-                    attroff(COLOR_PAIR(7));
-                    show_message_for_2_seconds("Password correct! Door unlocked");
-                } else {
-                    door->attempts_left--;
-                    
-                    if (door->attempts_left == 0) {
-                        door->is_locked = 1;
-                        time(&door->password_time);
-                        show_message_for_2_seconds("Too many wrong attempts! Door locked.");
-                    } else {
-                        show_message_for_2_seconds("Wrong password! Attempts left decreasing.");
+                int choice = wgetch(key_prompt);
+                delwin(key_prompt);
+                
+                if (choice == 'y' || choice == 'Y') {
+                    if (use_ancient_key(floor, player, new_x, new_y)) {
+                        return;
                     }
                 }
+            }
 
+            char input[5];
+            int height = 3, width = 50;
+            WINDOW *pass_win = newwin(height, width, 1, 1);
+            box(pass_win, 0, 0);
+            echo();
+
+            mvwprintw(pass_win, 1, 2, "Enter password: ");
+            if (door->attempts_left < 3) {
+                wattron(pass_win, COLOR_PAIR(127));
+                mvwprintw(pass_win, 1, 2, door->attempts_left == 2 ? 
+                         "Last chance! Enter password: " : "FINAL ATTEMPT! Enter password: ");
+                wattroff(pass_win, COLOR_PAIR(127));
+            }
+            wrefresh(pass_win);
+            wgetnstr(pass_win, input, 4);
+            noecho();
+            
+            if (strcmp(input, door->password) == 0 || check_reverse_password(input, door->password)) {
+                door->is_locked = 0;
+                floor->map[door->y][door->x] = '@';
+                render_map(floor);
+                
+                attron(COLOR_PAIR(115)); 
+                mvaddch(door->y, door->x, '@');
+                attroff(COLOR_PAIR(115));
+                refresh();
+
+                show_message_for_2_seconds("Password correct! Door unlocked");
                 werase(pass_win);
                 wrefresh(pass_win);
                 delwin(pass_win);
-                return;
+            } else {
+                door->attempts_left--;
+                
+                if (door->attempts_left == 0) {
+                    door->is_locked = 1;
+                    time(&door->password_time);
+                    show_message_for_2_seconds("Too many wrong attempts! Door locked for 30 seconds.");
+                    werase(pass_win);
+                    wrefresh(pass_win);
+                    delwin(pass_win);
+                    refresh();
+                    return;
+                } else {
+                    char msg[100];
+                    snprintf(msg, sizeof(msg), "Wrong password! %d attempts remaining.", door->attempts_left);
+                    show_message_for_2_seconds(msg);
+                    werase(pass_win);
+                    wrefresh(pass_win);
+                    delwin(pass_win);
+                }
             }
+            render_map(floor);
+            refresh();
+            return;
         }
     }
 }
@@ -3583,7 +3618,6 @@ void create_treasure_room(Floor *floor, Player *player) {
         }
     }
 
-    // entrance
     int entrance_x = start_x + (room_width / 2);
     int entrance_y = start_y + room_height - 1;
     if (entrance_y < MAP_ROWS - 1) {
@@ -3659,7 +3693,7 @@ void check_win_condition(Floor *floor, Player *player) {
         WINDOW *win_win = newwin(height, width, start_y, start_x);
         box(win_win, 0, 0);
         
-        wattron(win_win, COLOR_PAIR(6)); // Yellow color for victory message
+        wattron(win_win, COLOR_PAIR(6));
         mvwprintw(win_win, 2, (width - 23) / 2, "🎉 CONGRATULATIONS! 🎉");
         mvwprintw(win_win, 4, (width - 35) / 2, "You've defeated all monsters in the dungeon!");
         mvwprintw(win_win, 6, (width - 25) / 2, "Final Gold Collected: %d", player->gold);
@@ -3697,15 +3731,15 @@ void display_game_over(Player *player) {
     mvwprintw(death_win, 2, (width - 12) / 2, "GAME OVER!");
     wattroff(death_win, COLOR_PAIR(1));
     
-    wattron(death_win, COLOR_PAIR(2)); // Stats in different color
+    wattron(death_win, COLOR_PAIR(2));
     mvwprintw(death_win, 5, 5, "Final Stats:");
     mvwprintw(death_win, 6, 5, "- Gold Collected: %d", player->gold);
     mvwprintw(death_win, 7, 5, "- Health: %d/%d", player->health.current_health, player->health.max_health);
     mvwprintw(death_win, 8, 5, "- Hunger Level: %d%%", player->health.hunger);
     wattroff(death_win, COLOR_PAIR(2));
     
-    wattron(death_win, COLOR_PAIR(6)); // Yellow for score
-    mvwprintw(death_win, 10, 5, "Final Score: %d (Gold × 5 + Health)", final_score);
+    wattron(death_win, COLOR_PAIR(6));
+    mvwprintw(death_win, 10, 5, "Final Score: %d ", final_score);
     wattroff(death_win, COLOR_PAIR(6));
     
     wattron(death_win, COLOR_PAIR(1));
@@ -3736,30 +3770,25 @@ void save_game_state(Player *player, Floor floors[]) {
         return;
     }
 
-    // Write player identification data
     if (fwrite(&current_player_data, sizeof(PlayerSaveData), 1, save_file) != 1) {
         fclose(save_file);
         show_message_for_2_seconds("Error saving player data!");
         return;
     }
 
-    // Write current floor
     if (fwrite(&current_floor, sizeof(int), 1, save_file) != 1) {
         fclose(save_file);
         show_message_for_2_seconds("Error saving current floor!");
         return;
     }
 
-    // Write player data
     if (fwrite(player, sizeof(Player), 1, save_file) != 1) {
         fclose(save_file);
         show_message_for_2_seconds("Error saving player stats!");
         return;
     }
 
-    // Write floor data
     for (int i = 0; i < 4; i++) {
-        // Save map data
         for (int y = 0; y < MAP_ROWS; y++) {
             if (fwrite(floors[i].map[y], sizeof(char), MAP_COLS, save_file) != MAP_COLS) {
                 fclose(save_file);
@@ -3768,7 +3797,6 @@ void save_game_state(Player *player, Floor floors[]) {
             }
         }
 
-        // Save visibility data
         for (int y = 0; y < MAP_ROWS; y++) {
             if (fwrite(floors[i].visibility[y], sizeof(bool), MAP_COLS, save_file) != MAP_COLS) {
                 fclose(save_file);
@@ -3777,7 +3805,6 @@ void save_game_state(Player *player, Floor floors[]) {
             }
         }
 
-        // Save floor metadata
         if (fwrite(&floors[i].floor_index, sizeof(int), 1, save_file) != 1 ||
             fwrite(&floors[i].food_count, sizeof(int), 1, save_file) != 1 ||
             fwrite(&floors[i].spell_count, sizeof(int), 1, save_file) != 1 ||
@@ -3788,14 +3815,12 @@ void save_game_state(Player *player, Floor floors[]) {
             return;
         }
 
-        // Save room data
         if (fwrite(floors[i].rooms, sizeof(Room), 6, save_file) != 6) {
             fclose(save_file);
             show_message_for_2_seconds("Error saving room data!");
             return;
         }
 
-        // Save items data
         if (fwrite(floors[i].food_items, sizeof(FoodItem), MAX_FOOD_NUMBER * 6, save_file) != MAX_FOOD_NUMBER * 6 ||
             fwrite(floors[i].spell_items, sizeof(SpellItem), MAX_SPELLS_PLAYER, save_file) != MAX_SPELLS_PLAYER ||
             fwrite(floors[i].weapon_items, sizeof(WeaponItem), 20, save_file) != 20) {
@@ -3804,7 +3829,6 @@ void save_game_state(Player *player, Floor floors[]) {
             return;
         }
 
-        // Save doors and key data
         if (fwrite(floors[i].password_doors, sizeof(PasswordDoor), 6, save_file) != 6 ||
             fwrite(&floors[i].ancient_key, sizeof(AncientKey), 1, save_file) != 1) {
             fclose(save_file);
@@ -3813,7 +3837,6 @@ void save_game_state(Player *player, Floor floors[]) {
         }
     }
 
-    // Save monster data for each floor
     for (int i = 0; i < 4; i++) {
         if (fwrite(&floor_monsters[i].monster_count, sizeof(int), 1, save_file) != 1 ||
             fwrite(floor_monsters[i].monsters, sizeof(Monster), MAX_MONSTERS_PER_FLOOR, save_file) != MAX_MONSTERS_PER_FLOOR) {
@@ -3823,7 +3846,6 @@ void save_game_state(Player *player, Floor floors[]) {
         }
     }
 
-    // Save collected spells and food
     if (fwrite(collected_spells, sizeof(SpellItem), MAX_SPELLS_PLAYER, save_file) != MAX_SPELLS_PLAYER ||
         fwrite(stored_food, sizeof(FoodItem), 6, save_file) != 6 ||
         fwrite(&spell_in_room, sizeof(int), 1, save_file) != 1 ||
@@ -3843,34 +3865,28 @@ bool load_game_state(Player *player, Floor floors[]) {
         return false;
     }
 
-    // Read player identification data
     PlayerSaveData loaded_player_data;
     if (fread(&loaded_player_data, sizeof(PlayerSaveData), 1, save_file) != 1) {
         fclose(save_file);
         return false;
     }
 
-    // Verify if the loaded save belongs to the current player
     if (strcmp(loaded_player_data.username, current_player_data.username) != 0) {
         fclose(save_file);
         return false;
     }
 
-    // Read current floor
     if (fread(&current_floor, sizeof(int), 1, save_file) != 1) {
         fclose(save_file);
         return false;
     }
 
-    // Read player data
     if (fread(player, sizeof(Player), 1, save_file) != 1) {
         fclose(save_file);
         return false;
     }
 
-    // Read floor data
     for (int i = 0; i < 4; i++) {
-        // Allocate memory for the map if not already allocated
         if (!floors[i].map) {
             floors[i].map = malloc(MAP_ROWS * sizeof(char *));
             for (int y = 0; y < MAP_ROWS; y++) {
@@ -3878,7 +3894,6 @@ bool load_game_state(Player *player, Floor floors[]) {
             }
         }
 
-        // Allocate memory for visibility if not already allocated
         if (!floors[i].visibility) {
             floors[i].visibility = malloc(MAP_ROWS * sizeof(bool *));
             for (int y = 0; y < MAP_ROWS; y++) {
@@ -3886,7 +3901,6 @@ bool load_game_state(Player *player, Floor floors[]) {
             }
         }
 
-        // Load map data
         for (int y = 0; y < MAP_ROWS; y++) {
             if (fread(floors[i].map[y], sizeof(char), MAP_COLS, save_file) != (size_t)MAP_COLS) {
                 fclose(save_file);
@@ -3894,7 +3908,6 @@ bool load_game_state(Player *player, Floor floors[]) {
             }
         }
 
-        // Load visibility data
         for (int y = 0; y < MAP_ROWS; y++) {
             if (fread(floors[i].visibility[y], sizeof(bool), MAP_COLS, save_file) != (size_t)MAP_COLS) {
                 fclose(save_file);
@@ -3902,7 +3915,6 @@ bool load_game_state(Player *player, Floor floors[]) {
             }
         }
 
-        // Load floor metadata
         size_t items_read = 0;
         items_read += fread(&floors[i].floor_index, sizeof(int), 1, save_file);
         items_read += fread(&floors[i].food_count, sizeof(int), 1, save_file);
@@ -3915,13 +3927,11 @@ bool load_game_state(Player *player, Floor floors[]) {
             return false;
         }
 
-        // Load room data
         if (fread(floors[i].rooms, sizeof(Room), 6, save_file) != 6) {
             fclose(save_file);
             return false;
         }
 
-        // Load items data
         if (fread(floors[i].food_items, sizeof(FoodItem), MAX_FOOD_NUMBER * 6, save_file) != MAX_FOOD_NUMBER * 6 ||
             fread(floors[i].spell_items, sizeof(SpellItem), MAX_SPELLS_PLAYER, save_file) != MAX_SPELLS_PLAYER ||
             fread(floors[i].weapon_items, sizeof(WeaponItem), 20, save_file) != 20) {
@@ -3929,7 +3939,6 @@ bool load_game_state(Player *player, Floor floors[]) {
             return false;
         }
 
-        // Load doors and key data
         if (fread(floors[i].password_doors, sizeof(PasswordDoor), 6, save_file) != 6 ||
             fread(&floors[i].ancient_key, sizeof(AncientKey), 1, save_file) != 1) {
             fclose(save_file);
@@ -3937,7 +3946,6 @@ bool load_game_state(Player *player, Floor floors[]) {
         }
     }
 
-    // Load monster data for each floor
     for (int i = 0; i < 4; i++) {
         if (fread(&floor_monsters[i].monster_count, sizeof(int), 1, save_file) != 1 ||
             fread(floor_monsters[i].monsters, sizeof(Monster), MAX_MONSTERS_PER_FLOOR, save_file) != MAX_MONSTERS_PER_FLOOR) {
@@ -3946,7 +3954,6 @@ bool load_game_state(Player *player, Floor floors[]) {
         }
     }
 
-    // Load collected spells and food
     if (fread(collected_spells, sizeof(SpellItem), MAX_SPELLS_PLAYER, save_file) != MAX_SPELLS_PLAYER ||
         fread(stored_food, sizeof(FoodItem), 6, save_file) != 6 ||
         fread(&spell_in_room, sizeof(int), 1, save_file) != 1 ||
@@ -4036,6 +4043,9 @@ void display_ancient_key_menu(Player *player) {
     werase(key_menu_win);
     wrefresh(key_menu_win);
     delwin(key_menu_win);
+    clear();
+    render_map(&floors[current_floor]);
+    mvaddch(player->y, player->x, '@');
     refresh();
 }
 
@@ -4143,7 +4153,6 @@ void check_windows(Floor *floor, Player *player) {
 }
 
 void make_corridor_visible(Floor *floor, int x, int y) {
-    // Make the corridor and surrounding area visible
     for (int dy = -1; dy <= 1; dy++) {
         for (int dx = -1; dx <= 1; dx++) {
             int new_y = y + dy;
@@ -4151,7 +4160,6 @@ void make_corridor_visible(Floor *floor, int x, int y) {
             
             if (new_y >= 0 && new_y < MAP_ROWS && 
                 new_x >= 0 && new_x < MAP_COLS) {
-                // If it's a corridor or surrounding area
                 if (floor->map[new_y][new_x] == '#' ||
                     floor->map[new_y][new_x] == '+' ||
                     floor->map[new_y][new_x] == '=' ||
@@ -4166,6 +4174,7 @@ void make_corridor_visible(Floor *floor, int x, int y) {
 void update_room_visibility(Floor *floor, Player *player) {
     Room *current_room = NULL;
     int current_room_index = -1;
+    static RoomTheme last_room_theme = NORMAL_ROOM;
     
     for (int i = 0; i < 6; i++) {
         Room *room = &floor->rooms[i];
@@ -4173,9 +4182,30 @@ void update_room_visibility(Floor *floor, Player *player) {
             player->y >= room->y && player->y < room->y + room->height) {
             current_room = room;
             current_room_index = i;
+            
+            if (current_room->theme != last_room_theme) {
+                play_room_music(current_room->theme);
+                last_room_theme = current_room->theme;
+                
+                switch(current_room->theme) {
+                    case NORMAL_ROOM:
+                        show_message_for_2_seconds("Entering a new room...");
+                        break;
+                    case ENCHANTED_ROOM:
+                        show_message_for_2_seconds("Entering Enchanted Room ");
+                        break;
+                    case TREASURE_ROOM:
+                        show_message_for_2_seconds("Entering Treasure Room ");
+                        break;
+                    case NIGHTMARE_ROOM:
+                        show_message_for_2_seconds("Entering Nightmare Room ");
+                        break;
+                }
+            }
             break;
         }
     }
+
     if (current_room) {
         if (current_room->theme == NIGHTMARE_ROOM) {
             for (int y = 0; y < MAP_ROWS; y++) {
@@ -4184,8 +4214,8 @@ void update_room_visibility(Floor *floor, Player *player) {
                 }
             }
             
-            for (int dy = -4; dy <= 4; dy++) {
-                for (int dx = -4; dx <= 4; dx++) {
+            for (int dy = -2; dy <= 2; dy++) {
+                for (int dx = -2; dx <= 2; dx++) {
                     int new_y = player->y + dy;
                     int new_x = player->x + dx;
                     
@@ -4203,11 +4233,13 @@ void update_room_visibility(Floor *floor, Player *player) {
         
         if (!current_room->visited) {
             current_room->visited = true;
+            
             for (int y = current_room->y; y < current_room->y + current_room->height; y++) {
                 for (int x = current_room->x; x < current_room->x + current_room->width; x++) {
                     floor->visibility[y][x] = true;
                 }
             }
+            
             for (int i = 0; i < 4; i++) {
                 if (current_room->door_coords[i][0] != 0) {
                     make_corridor_visible(floor, current_room->door_coords[i][0], 
@@ -4225,6 +4257,7 @@ void update_room_visibility(Floor *floor, Player *player) {
                     floor->visibility[y][x] = true;
                 }
             }
+            
             for (int j = 0; j < 4; j++) {
                 if (room->door_coords[j][0] != 0) {
                     make_corridor_visible(floor, room->door_coords[j][0], 
@@ -4302,10 +4335,11 @@ void start_game() {
     int ch;
     int scr_row, scr_col;
     initscr();
+    keypad(stdscr, 1);
     srand(time(NULL));
     curs_set(0);
     noecho();
-    // keypad(stdscr, 1);
+    
     getmaxyx(stdscr, scr_row, scr_col);
     start_color();
     colorspair();
@@ -4339,6 +4373,8 @@ void start_game() {
             .has_weapon_equipped = true
         }
     };
+    int is_music_muted = 0;
+
     strncpy(player.username, current_player_data.username, sizeof(player.username) - 1);
     player.username[sizeof(player.username) - 1] = '\0';
     time_t session_start = time(NULL);
@@ -4438,7 +4474,20 @@ void start_game() {
         if (ch == 'A') {
             display_ancient_key_menu(&player);
         }
+        if (ch == 'z' || ch == 'Z') {
+            if (is_music_muted) {
+                Mix_ResumeMusic();
+                is_music_muted = 0;
+                show_message_for_2_seconds("Music resumed!");
+            } else {
+                Mix_PauseMusic();
+                is_music_muted = 1;
+                show_message_for_2_seconds("Music muted!");
+            }
+        }
+
         if (player.health.current_health <= 0) {
+            rockstar_animation();
             display_game_over(&player);
         }
         check_treasure_room_status(&floors[current_floor], &player);

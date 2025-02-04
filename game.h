@@ -47,6 +47,23 @@
 #define TRAP_DAMAGE_MEDIUM 5
 #define TRAP_DAMAGE_HARD 10
 
+typedef struct {
+    int rank;
+    char username[50];
+    int totalPoints;
+    int totalGold;
+    int gamesCompleted;
+    int timeSinceFirstGame;
+    int isCurrentUser;
+    char title[10];
+    char emoji[10];
+} LeaderboardEntry;
+
+typedef struct {
+    LeaderboardEntry entries[100];
+    int totalEntries;
+    int currentPage;
+} LeaderboardData;
 
 
 typedef struct {
@@ -65,10 +82,13 @@ typedef struct {
     time_t damage_spell_start_time;
 } HealthSystem;
 
-typedef struct PasswordDoor {
-    int x, y;
+typedef struct {
+    int x;
+    int y;
     char password[5];
-    int is_locked;
+    char second_password[5];
+    bool second_password_active;
+    bool is_locked;
     int attempts_left;
     time_t password_time;
 } PasswordDoor;
@@ -260,10 +280,10 @@ extern int current_floor;
 extern MonsterList floor_monsters[4];
 extern int spell_in_room; 
 extern SpellItem collected_spells[MAX_SPELLS_PLAYER]; 
-extern int character_color;  // For player character color
+extern int character_color;
 extern FoodItem stored_food[6];
 extern int food_count;
-extern Player current_player;  //global player
+extern Player current_player;
 extern PlayerSaveData current_player_data;
 extern int difficulty;
 
@@ -348,4 +368,9 @@ void update_room_visibility(Floor *floor, Player *player);
 void make_corridor_visible(Floor *floor, int x, int y);
 bool show_collection_prompt(const char *item_name);
 void check_and_collect_spell(Floor *floor, Player *player, int x, int y);
+int  play_room_music(RoomTheme theme);
+void run_anime_intro();
+void loadLeaderboard(LeaderboardData *data);
+int  find_user_by_email(const char* email, char* username);
+
 #endif
