@@ -2,7 +2,7 @@
 #include "rock.c"
 #include "audio.h"
 
-
+//combine master key
 int current_floor = 0;
 Floor floors[4];
 MonsterList floor_monsters[4];
@@ -2298,9 +2298,9 @@ void display_floor_name(int floor_index) {
     int name_length = strlen(floor_names[floor_index]);
     int start_x = (scr_col - name_length - 4) / 2;
     
-    wattron(name_win, COLOR_PAIR(2));
+    wattron(name_win, COLOR_PAIR(6));
     mvwprintw(name_win, 1, start_x, "%s", floor_names[floor_index]);
-    wattroff(name_win, COLOR_PAIR(2));
+    wattroff(name_win, COLOR_PAIR(6));
     
     wrefresh(name_win);
     napms(2000);
@@ -2792,8 +2792,17 @@ bool is_monster_in_visited_room(Floor *floor, Monster *monster) {
 }
 
 bool is_within_range(Monster *monster, int new_x, int new_y) {
-    if (monster->type == SNAKE) return true; 
-    
+    if (monster->type == SNAKE) {
+        for (int i = 0; i < 6; i++) {
+            Room *room = &floors[current_floor].rooms[i];
+            if (monster->initial_x >= room->x && monster->initial_x < room->x + room->width &&
+                monster->initial_y >= room->y && monster->initial_y < room->y + room->height) {
+                return (new_x >= room->x && new_x < room->x + room->width &&
+                        new_y >= room->y && new_y < room->y + room->height);
+            }
+        }
+        return false;
+    }
     int distance_from_start = abs(new_x - monster->initial_x) + abs(new_y - monster->initial_y);
     return distance_from_start <= 5;
 }
