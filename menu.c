@@ -2,6 +2,8 @@
 #include "audio.h"
 #include "anime3.c"
 #include "LA.c"
+#include "database.h"
+
 #include <dirent.h>
 extern void start_game(void);
 #include <stdio.h>
@@ -27,6 +29,7 @@ int music_choice = 0;
 int character_color = 20;
 char messages[10][100];
 int message_count=0;
+extern bool db_enabled;
 
 
 void pre_game_menu(void);
@@ -36,6 +39,8 @@ void set_character_color(void);
 void set_music(void);
 void settings_menu(void);
 void display_profile_menu(void);
+void log_message(const char *new_message);
+
 
 int compareLeaderboard(const void *a, const void *b) {
     return ((LeaderboardEntry *)b)->totalPoints - ((LeaderboardEntry *)a)->totalPoints;
@@ -167,6 +172,14 @@ void save_leaderboard_data(Player *player) {
             player->health.max_health);
     fprintf(file, "------------------\n");
     fclose(file);
+
+    if (db_enabled) {
+        update_player_stats_db(player->username, 
+                             player->gold,
+                             player->completed_games,
+                             player->health.current_health,
+                             player->health.max_health);
+    }
 }
 
 void loadLeaderboard(LeaderboardData *data) {
@@ -465,6 +478,14 @@ void new_user_menu(WINDOW *menu_win) {
         wattroff(success_box, COLOR_PAIR(4) | A_BOLD);
         wrefresh(success_box);
         
+        if (init_database()) {
+            if (store_player_db(username, email)) {
+                log_message("Player data stored in database successfully!");
+            } else {
+                log_message("Note: Could not store player in database (continuing with file storage)");
+            }
+        }
+
         FILE *file = fopen("filepro.txt", "a");
         if (file) {
             fprintf(file, "%s,%s,%s\n", username, password, email);
@@ -642,11 +663,9 @@ void login() {
     switch (log_in) {
         case 1:
             new_user_menu(menu_win);
-            log_message("LET THE GAMES BEGIN!");
             break;
         case 2:
             guest_user(menu_win);
-            log_message("LET THE GAMES BEGIN!");
             break;
         default:
             wattron(menu_win, COLOR_PAIR(3));
@@ -1323,6 +1342,20 @@ void initialize_player(Player *player, const char *username, const char *email) 
     strncpy(player->email, email, sizeof(player->email) - 1);
     player->email[sizeof(player->email) - 1] = '\0';
     
+    int gold, completed_games, current_health, max_health;
+    if (db_enabled && load_player_stats_db(username, &gold, &completed_games, 
+                                         &current_health, &max_health)) {
+        player->gold = gold;
+        player->completed_games = completed_games;
+        player->health.current_health = current_health;
+        player->health.max_health = max_health;
+    } else {
+        player->gold = 0;
+        player->completed_games = 0;
+        player->health.current_health = 100;
+        player->health.max_health = 100;
+    }
+
     player->gold = 0;
     player->traps = 0;
     player->basic_food_count = 0;
@@ -1481,6 +1514,11 @@ int main() {
     setenv("LANG", "en_US.UTF-8", 1);
     initscr();
     cbreak();
+
+    if (!init_database()) {
+        log_message("Note: Database initialization failed, using file storage only");
+    }
+    
     run_anime_intro();
     init_audio();
     

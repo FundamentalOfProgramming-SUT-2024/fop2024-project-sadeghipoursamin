@@ -1,8 +1,7 @@
 CC = gcc
 INCLUDES = -I/opt/homebrew/include/SDL2 -I/opt/homebrew/include
-LIBS = -L/opt/homebrew/lib -lSDL2 -lSDL2_mixer -lncurses
-
-SRCS = menu.c audio.c roguegame.c
+LIBS = -L/opt/homebrew/lib -lSDL2 -lSDL2_mixer -lncurses -lsqlite3
+SRCS = menu.c audio.c roguegame.c database.c
 OBJS = $(SRCS:.c=.o)
 TARGET = game
 
