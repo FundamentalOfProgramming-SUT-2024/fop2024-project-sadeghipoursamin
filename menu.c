@@ -75,11 +75,11 @@ void displayLeaderboard() {
     keypad(leaderboard_win, TRUE);
 
     start_color();
-    init_pair(10, COLOR_YELLOW, COLOR_BLACK);
-    init_pair(11, COLOR_CYAN, COLOR_BLACK);
-    init_pair(12, COLOR_RED, COLOR_BLACK); 
-    init_pair(13, COLOR_GREEN, COLOR_BLACK);
-    init_pair(14, COLOR_WHITE, COLOR_BLACK);
+    init_pair(10, COLOR_YELLOW, COLOR_BLACK);  // Gold
+    init_pair(11, COLOR_CYAN, COLOR_BLACK);    // Silver
+    init_pair(12, COLOR_RED, COLOR_BLACK);     // Bronze
+    init_pair(13, COLOR_GREEN, COLOR_BLACK);   // Current user
+    init_pair(14, COLOR_WHITE, COLOR_BLACK);   // Others
 
     int scroll_position = 0;
     int max_scroll = (data.totalEntries > 0) ? data.totalEntries - 1 : 0;
@@ -100,8 +100,8 @@ void displayLeaderboard() {
             wattroff(leaderboard_win, COLOR_PAIR(10 + i) | A_BOLD);
         }
 
-        mvwprintw(leaderboard_win, 4, 2, "Rank  Username          Points   Gold    Games   Experience  Title");
-        mvwprintw(leaderboard_win, 5, 2, "-------------------------------------------------------------------");
+        mvwprintw(leaderboard_win, 4, 2, "Rank  Username          Points   Gold    Games   Exp(days)  Title");
+        mvwprintw(leaderboard_win, 5, 2, "--------------------------------------------------------------------");
 
         int list_start = 6;
         int visible_entries = height - list_start - 2;
@@ -114,7 +114,7 @@ void displayLeaderboard() {
             else if (entry->isCurrentUser) wattron(leaderboard_win, COLOR_PAIR(13));
             else wattron(leaderboard_win, COLOR_PAIR(14));
 
-            mvwprintw(leaderboard_win, y_pos, 2, "%3d %s %-15s %7d %7d %7d %7d days  %s",
+            mvwprintw(leaderboard_win, y_pos, 2, "%3d %s %-15s %7d %7d %7d %8d    %s",
                      entry->rank,
                      entry->emoji,
                      entry->username,
@@ -218,10 +218,32 @@ void loadLeaderboard(LeaderboardData *data) {
                 }
             }
             
+            int game_count = 0;
+            rewind(stats);
+            while (fgets(line, sizeof(line), stats)) {
+                if (strstr(line, "Session End:")) {
+                    game_count++;
+                }
+            }
+            
+            time_t first_game_time = time(NULL);
+            rewind(stats);
+            while (fgets(line, sizeof(line), stats)) {
+                if (strstr(line, "Login Time:")) {
+                    struct tm tm;
+                    if (strptime(line + 11, "%c", &tm) != NULL) {
+                        time_t login_time = mktime(&tm);
+                        if (login_time < first_game_time) {
+                            first_game_time = login_time;
+                        }
+                    }
+                }
+            }
+            
             entry->totalPoints = (gold * 5) + health;
             entry->totalGold = gold;
-            entry->gamesCompleted = 1;
-            entry->timeSinceFirstGame = 0;
+            entry->gamesCompleted = game_count > 0 ? game_count : 1;
+            entry->timeSinceFirstGame = (int)((time(NULL) - first_game_time) / (24 * 60 * 60));
             entry->isCurrentUser = (strcmp(username, current_player.username) == 0);
             
             data->totalEntries++;
@@ -234,6 +256,7 @@ void loadLeaderboard(LeaderboardData *data) {
     for (int i = 0; i < data->totalEntries; i++) {
         data->entries[i].rank = i + 1;
     }
+    
     assignTitlesAndEmojis(data);
 }
 

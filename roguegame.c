@@ -427,6 +427,7 @@ void render_map(Floor *floor) {
                 bool in_enchanted_room = false;
                 bool in_nightmare_room = false;
                 bool in_treasure_room = false;
+                bool in_battle_room = false;
                 
                 for (int r = 0; r < 6; r++) {
                     Room *room = &floor->rooms[r];
@@ -450,7 +451,12 @@ void render_map(Floor *floor) {
                     attroff(COLOR_PAIR(132));
                 }
                 else if (in_enchanted_room) {
-                    attron(COLOR_PAIR(134));  // purple for enchanted
+                    attron(COLOR_PAIR(134));  // Purple for enchanted
+                    mvaddch(i, j, ch);
+                    attroff(COLOR_PAIR(134));
+                }
+                else if (current_player.traps >= 5) { // Battle room condition
+                    attron(COLOR_PAIR(134));  // Blue for battle room
                     mvaddch(i, j, ch);
                     attroff(COLOR_PAIR(134));
                 }
@@ -468,12 +474,12 @@ void render_map(Floor *floor) {
                         mvaddch(i, j, ch);
                         attroff(COLOR_PAIR(103));
                     } else {
-                        attron(COLOR_PAIR(107));  // for normal rooms
+                        attron(COLOR_PAIR(107));  // For normal rooms
                         mvaddch(i, j, ch);
                         attroff(COLOR_PAIR(107));
                     }
                 } else {
-                    attron(COLOR_PAIR(107));  // for normal rooms
+                    attron(COLOR_PAIR(107));  // For normal rooms
                     mvaddch(i, j, ch);
                     attroff(COLOR_PAIR(107));
                 }
@@ -1647,6 +1653,12 @@ found_stair_down:
         show_message_for_2_seconds(trap_msg);
         
         player->traps++;
+        if (player->traps >= 5) {
+            show_message_for_2_seconds("You've triggered the Battle Room!");
+            create_battle_room(floor, player);
+            player->traps = 0; 
+            return;
+        }
     }
     if (floor->map[new_y][new_x] == '&') {
         mvaddch(player->y, player->x, '&');
@@ -4338,6 +4350,103 @@ void check_and_collect_spell(Floor *floor, Player *player, int x, int y) {
             break;
         }
     }
+}
+
+void create_battle_room(Floor *floor, Player *player) {
+    for (int i = 0; i < MAP_ROWS; i++) {
+        for (int j = 0; j < MAP_COLS; j++) {
+            floor->map[i][j] = ' ';
+            if (i == 0 || i == MAP_ROWS - 2 || j == 0 || j == MAP_COLS - 1) {
+                floor->map[i][j] = '*';
+            }
+        }
+    }
+
+    const char* header[] = {
+        "                          ",
+        "    |>>>          |>>>    ",
+        "    |             |       ",
+        "   / \\           / \\     ",
+        "  /___\\         /___\\    ",
+        "  [ B ]         [ B ]     ",
+        "  [   ]         [   ]     ",
+        "  [   ]_ _ _    [   ]     ",
+        "  [   ] U U |   [   ]     ",
+        "  [   ]====/    [   ]     ",
+        "  [___]         [___]     ",
+        "   \\=/           \\=/      "
+    };
+    
+    for (int i = 0; i < 12 && i + 2 < MAP_ROWS; i++) {
+        int len = strlen(header[i]);
+        int start_header_x = (MAP_COLS - len) / 2;
+        for (int j = 0; j < len && start_header_x + j < MAP_COLS - 1; j++) {
+            if (start_header_x + j > 0) {
+                floor->map[i + 2][start_header_x + j] = header[i][j];
+            }
+        }
+    }
+
+    int room_width = (MAP_COLS * 2) / 3;
+    int room_height = (MAP_ROWS * 1) / 2; 
+    int start_x = (MAP_COLS - room_width) / 2;
+    int start_y = MAP_ROWS - room_height - 20;
+
+    Room battle_room = {
+        .x = start_x,
+        .y = start_y,
+        .width = room_width,
+        .height = room_height,
+        .theme = NORMAL_ROOM,
+        .visited = true
+    };
+    
+    memset(&floor->rooms[0], 0, sizeof(Room)); 
+    floor->rooms[0] = battle_room;
+
+    for (int y = start_y; y < start_y + room_height && y < MAP_ROWS - 1; y++) {
+        for (int x = start_x; x < start_x + room_width && x < MAP_COLS - 1; x++) {
+            if (y == start_y || y == start_y + room_height - 1) {
+                floor->map[y][x] = '-';
+            } else if (x == start_x || x == start_x + room_width - 1) {
+                floor->map[y][x] = '|';
+            } else {
+                floor->map[y][x] = '.';
+            }
+        }
+    }
+
+    int entrance_x = start_x + (room_width / 2);
+    int entrance_y = start_y + room_height - 1;
+    if (entrance_y < MAP_ROWS - 1) {
+        floor->map[entrance_y][entrance_x] = '+';
+    }
+    player->x = entrance_x;
+    player->y = entrance_y;
+
+    floor_monsters[floor->floor_index].monster_count = 0;
+
+    int max_monsters = MIN(20, (room_width * room_height) / 15);
+    int num_monsters = random_generator(15, max_monsters);
+    
+    for (int i = 0; i < num_monsters && 
+         floor_monsters[floor->floor_index].monster_count < MAX_MONSTERS_PER_FLOOR; i++) {
+        int x = random_generator(start_x + 1, start_x + room_width - 2);
+        int y = random_generator(start_y + 1, start_y + room_height - 2);
+        
+        if (floor->map[y][x] == '.' &&
+            (abs(x - entrance_x) > 2 || abs(y - entrance_y) > 2)) {
+            MonsterType type = random_generator(FIRE, UNDEAD);
+            Monster new_monster = create_monster(type, x, y);
+            new_monster.health *= 1.5;
+            new_monster.max_health *= 1.5;
+            new_monster.damage *= 1.5;
+            floor_monsters[floor->floor_index].monsters[floor_monsters[floor->floor_index].monster_count++] = new_monster;
+            floor->map[y][x] = get_monster_char(type);
+        }
+    }
+
+    floor->reveal_all = true;
 }
 
 void start_game() {
